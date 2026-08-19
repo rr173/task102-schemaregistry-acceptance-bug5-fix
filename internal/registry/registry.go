@@ -310,8 +310,9 @@ func (r *Registry) DeleteSubject(subject string) error {
 	return nil
 }
 
-// DeleteVersion removes the latest version of a subject. Deleting a non-latest
-// version returns an *ErrNotLatest carrying the current latest version.
+// DeleteVersion removes the latest version of a subject. Deleting a version
+// that does not exist returns ErrNotFound; deleting a version that exists but
+// is not the latest returns an *ErrNotLatest carrying the current latest version.
 func (r *Registry) DeleteVersion(subject string, version int) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -323,6 +324,12 @@ func (r *Registry) DeleteVersion(subject string, version int) error {
 		return store.ErrNotFound
 	}
 	if version != latest {
+		// Distinguish a version that merely is not the latest from one that
+		// does not exist at all: the former is a 400 not_latest, the latter a
+		// 404 not_found.
+		if _, err := r.store.GetSchema(subject, version); err != nil {
+			return err
+		}
 		return &ErrNotLatest{Latest: latest}
 	}
 	if err := r.store.DeleteVersion(subject, version); err != nil {
